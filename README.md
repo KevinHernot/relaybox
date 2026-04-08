@@ -1,5 +1,9 @@
 # Relaybox
 
+[![CI](https://github.com/KevinHernot/relaybox/actions/workflows/ci.yml/badge.svg)](https://github.com/KevinHernot/relaybox/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![Release](https://img.shields.io/github/v/tag/KevinHernot/relaybox?label=release)](https://github.com/KevinHernot/relaybox/releases)
+
 Reliable event delivery primitives for Go services.
 
 `relaybox` is an early open-source extraction from Hopen's backend reliability layer. The initial release focuses on one narrow, useful slice: building idempotent NATS consumers that can survive retries, redeliveries, and reordered JSON payloads without reprocessing the same event twice.

@@ -2,7 +2,7 @@
 // reliable event delivery in Go services.
 package relaybox
 
-const Version = "0.1.0-dev"
+const Version = "0.1.0"
 
 // Project describes the current package metadata.
 type Project struct {
