@@ -6,7 +6,15 @@ import (
 	"time"
 )
 
+type memoryEntryState uint8
+
+const (
+	memoryEntryClaimed memoryEntryState = iota
+	memoryEntryDone
+)
+
 type memoryEntry struct {
+	state     memoryEntryState
 	expiresAt time.Time
 }
 
@@ -27,9 +35,9 @@ func NewMemoryStore() *MemoryStore {
 }
 
 // Claim reserves a key for processing if it is not currently active.
-func (s *MemoryStore) Claim(ctx context.Context, key string, ttl time.Duration) (bool, error) {
+func (s *MemoryStore) Claim(ctx context.Context, key string, ttl time.Duration) (ClaimResult, error) {
 	if err := ctx.Err(); err != nil {
-		return false, err
+		return ClaimInProgress, err
 	}
 
 	s.mu.Lock()
@@ -37,12 +45,18 @@ func (s *MemoryStore) Claim(ctx context.Context, key string, ttl time.Duration) 
 
 	s.pruneExpiredLocked()
 
-	if _, exists := s.entries[key]; exists {
-		return false, nil
+	if entry, exists := s.entries[key]; exists {
+		if entry.state == memoryEntryDone {
+			return ClaimDone, nil
+		}
+		return ClaimInProgress, nil
 	}
 
-	s.entries[key] = memoryEntry{expiresAt: s.now().Add(ttl)}
-	return true, nil
+	s.entries[key] = memoryEntry{
+		state:     memoryEntryClaimed,
+		expiresAt: s.now().Add(ttl),
+	}
+	return ClaimAcquired, nil
 }
 
 // MarkDone extends the key lifetime so duplicates are skipped for the done TTL.
@@ -55,7 +69,10 @@ func (s *MemoryStore) MarkDone(ctx context.Context, key string, ttl time.Duratio
 	defer s.mu.Unlock()
 
 	s.pruneExpiredLocked()
-	s.entries[key] = memoryEntry{expiresAt: s.now().Add(ttl)}
+	s.entries[key] = memoryEntry{
+		state:     memoryEntryDone,
+		expiresAt: s.now().Add(ttl),
+	}
 	return nil
 }
 

@@ -8,7 +8,7 @@ The `Store` interface tracks whether an event has already been claimed or comple
 
 Methods:
 
-- `Claim(ctx, key, ttl)` reserves a key for processing
+- `Claim(ctx, key, ttl)` reports whether the key was acquired, is still in progress, or is already done
 - `MarkDone(ctx, key, ttl)` keeps duplicates suppressed after success
 - `Release(ctx, key)` frees the key after a failed attempt
 
@@ -55,8 +55,7 @@ err := handler.Handle(msg)
 2. `Ce-Id` / `ce-id`
 3. JSON `id`
 4. JSON `message_id`
-5. composite stable fields like `aggregate_id + event_type`
-6. deterministic hash of normalized JSON bytes
+5. deterministic hash of normalized JSON bytes
 
 That last fallback is important because it means these payloads resolve to the same ID:
 
@@ -75,5 +74,4 @@ That last fallback is important because it means these payloads resolve to the s
 - `AckWait`
 - `SafetyMargin`
 
-Use `AckWait` when you are consuming from JetStream and want the handler context to expire before redelivery.
-
+Use `AckWait` when you are consuming from JetStream and want each delivery attempt to time out slightly before the configured redelivery window.

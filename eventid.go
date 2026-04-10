@@ -49,24 +49,6 @@ func ExtractStableEventID(msg *nats.Msg) (string, error) {
 		return fmt.Sprintf("msg:%s", withMessageID.MessageID), nil
 	}
 
-	var stableFields struct {
-		UserID         string `json:"user_id"`
-		AggregateID    string `json:"aggregate_id"`
-		ConversationID string `json:"conversation_id"`
-		EventType      string `json:"event_type"`
-	}
-	if err := json.Unmarshal(data, &stableFields); err == nil {
-		if stableFields.ConversationID != "" && stableFields.EventType != "" {
-			return fmt.Sprintf("conv:%s:%s", stableFields.ConversationID, stableFields.EventType), nil
-		}
-		if stableFields.AggregateID != "" && stableFields.EventType != "" {
-			return fmt.Sprintf("agg:%s:%s", stableFields.AggregateID, stableFields.EventType), nil
-		}
-		if stableFields.UserID != "" && stableFields.EventType != "" {
-			return fmt.Sprintf("user:%s:%s", stableFields.UserID, stableFields.EventType), nil
-		}
-	}
-
 	normalized, ok := NormalizeJSONForHash(data)
 	if ok {
 		data = normalized

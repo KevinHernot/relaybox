@@ -14,6 +14,10 @@ const (
 	defaultSafetyMargin = 2 * time.Second
 )
 
+// ErrEventInProgress indicates another consumer attempt is still processing the
+// same event.
+var ErrEventInProgress = errors.New("event already being processed")
+
 // ContextHandler processes a message payload with a context derived from the
 // inbound NATS message.
 type ContextHandler func(context.Context, []byte) error
@@ -69,7 +73,7 @@ func (h *IdempotentHandler) Handle(msg *nats.Msg) error {
 		return errors.New("nil NATS message")
 	}
 
-	ctx, cancel := deriveAckWaitContext(context.Background(), msg, h.options.AckWait, h.options.SafetyMargin)
+	ctx, cancel := deriveAckWaitContext(context.Background(), h.options.AckWait, h.options.SafetyMargin)
 	defer cancel()
 
 	eventID, err := ExtractStableEventID(msg)
@@ -78,12 +82,19 @@ func (h *IdempotentHandler) Handle(msg *nats.Msg) error {
 	}
 
 	key := h.options.KeyPrefix + ":" + eventID
-	claimed, err := h.store.Claim(ctx, key, h.options.ClaimTTL)
+	claimResult, err := h.store.Claim(ctx, key, h.options.ClaimTTL)
 	if err != nil {
 		return err
 	}
-	if !claimed {
+
+	switch claimResult {
+	case ClaimDone:
 		return nil
+	case ClaimInProgress:
+		return ErrEventInProgress
+	case ClaimAcquired:
+	default:
+		return errors.New("unknown claim result")
 	}
 
 	if err := h.handler(ctx, msg.Data); err != nil {
@@ -96,11 +107,10 @@ func (h *IdempotentHandler) Handle(msg *nats.Msg) error {
 
 func deriveAckWaitContext(
 	ctx context.Context,
-	msg *nats.Msg,
 	ackWait time.Duration,
 	safetyMargin time.Duration,
 ) (context.Context, context.CancelFunc) {
-	if ackWait <= 0 || msg == nil {
+	if ackWait <= 0 {
 		return ctx, func() {}
 	}
 
@@ -108,18 +118,12 @@ func deriveAckWaitContext(
 		safetyMargin = defaultSafetyMargin
 	}
 
-	md, err := msg.Metadata()
-	if err != nil || md == nil {
+	safeAckWait := ackWait - safetyMargin
+	if safeAckWait <= 0 {
 		return ctx, func() {}
 	}
 
-	remaining := ackWait - time.Since(md.Timestamp)
-	safeRemaining := remaining - safetyMargin
-	if safeRemaining <= 0 {
-		return ctx, func() {}
-	}
-
-	return context.WithTimeout(ctx, safeRemaining)
+	return context.WithTimeout(ctx, safeAckWait)
 }
 
 func mergeHandlerOptions(base HandlerOptions, override HandlerOptions) HandlerOptions {
