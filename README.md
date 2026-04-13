@@ -6,7 +6,7 @@
 
 Reliable event delivery primitives for Go services.
 
-`relaybox` is an early open-source extraction from Hopen's backend reliability layer. The initial release focuses on one narrow, useful slice: building idempotent NATS consumers that can survive retries, redeliveries, and reordered JSON payloads without reprocessing the same event twice.
+`relaybox` is an open-source extraction from Hopen's backend reliability layer. It focuses on the small pieces teams keep rebuilding around event-driven services: idempotent consumers, transactional outbox processing, delayed delivery, and broker-facing publish adapters.
 
 ## Status
 
@@ -18,8 +18,15 @@ Experimental, but real and usable.
 - canonical JSON hashing fallback for unordered payloads
 - an idempotent NATS handler
 - an in-memory claim store for tests, examples, and local tools
+- portable transactional outbox interfaces
+- an in-memory outbox repository
+- an outbox processor with retry/backoff handling
+- delayed message scheduling built on the outbox lifecycle
+- a Core NATS outbox publisher with `Nats-Msg-Id` dedup headers
 
 ## Quick Start
+
+### Idempotent NATS Handler
 
 ```go
 package main
@@ -54,11 +61,43 @@ func main() {
 }
 ```
 
+### Outbox Processor
+
+```go
+repo := relaybox.NewMemoryOutboxRepository()
+publisher := relaybox.NewNATSOutboxPublisher(natsConn)
+processor := relaybox.NewOutboxProcessor(repo, publisher)
+
+message := relaybox.NewOutboxMessage(
+	"evt-123",
+	"orders.created",
+	[]byte(`{"order_id":"order-1"}`),
+	relaybox.WithOutboxAggregate("order", "order-1"),
+)
+
+_ = repo.Add(context.Background(), message)
+_, _ = processor.ProcessBatch(context.Background())
+```
+
+### Delayed Queue
+
+```go
+queue := relaybox.NewDelayedQueue(repo)
+
+_ = queue.ScheduleAfter(
+	context.Background(),
+	"evt-124",
+	"orders.reminder",
+	[]byte(`{"order_id":"order-1"}`),
+	15*time.Minute,
+)
+```
+
 ## Package Focus
 
-`relaybox` is intentionally small for now. It does not yet include Hopen's full outbox, delayed-queue, or persistence integrations.
+`relaybox` keeps storage and broker integrations behind small interfaces. The built-in memory stores are intentionally simple; production services should provide durable implementations for `Store` and `OutboxRepository`.
 
-The next extraction candidates are documented in [docs/EXTRACTION_PLAN.md](docs/EXTRACTION_PLAN.md).
+The extraction roadmap is documented in [docs/EXTRACTION_PLAN.md](docs/EXTRACTION_PLAN.md).
 
 ## Development
 

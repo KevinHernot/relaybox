@@ -75,3 +75,113 @@ That last fallback is important because it means these payloads resolve to the s
 - `SafetyMargin`
 
 Use `AckWait` when you are consuming from JetStream and want each delivery attempt to time out slightly before the configured redelivery window.
+
+## Outbox
+
+### `OutboxMessage`
+
+`OutboxMessage` is a portable event envelope for transactional outbox storage.
+
+Required fields:
+
+- `ID`
+- `Subject`
+- `Payload`
+
+Common optional fields:
+
+- `Headers`
+- `AggregateID`
+- `AggregateType`
+- `Metadata`
+- `MaxAttempts`
+- `AvailableAt`
+
+Creation:
+
+```go
+message := relaybox.NewOutboxMessage(
+	"evt-123",
+	"orders.created",
+	[]byte(`{"order_id":"order-1"}`),
+	relaybox.WithOutboxAggregate("order", "order-1"),
+	relaybox.WithOutboxHeaders(map[string]string{
+		"traceparent": traceparent,
+	}),
+)
+```
+
+### `OutboxRepository`
+
+`OutboxRepository` stores and updates outbox messages.
+
+Methods:
+
+- `Add(ctx, message)` stores a pending message
+- `ClaimDue(ctx, limit, now)` atomically claims messages ready to publish
+- `MarkPublished(ctx, id)` records a successful publish
+- `MarkFailed(ctx, id, retryAt, cause)` records a failed publish and schedules a retry when attempts remain
+- `Release(ctx, id, availableAt)` returns a claimed message to the pending state
+
+### `MemoryOutboxRepository`
+
+`MemoryOutboxRepository` is the built-in in-process implementation.
+
+Use it for:
+
+- tests
+- examples
+- local CLIs
+- single-process demos
+
+Avoid it for:
+
+- transactional durability
+- horizontally scaled processors
+- cross-process delayed delivery
+
+### `OutboxPublisher`
+
+`OutboxPublisher` publishes a claimed message.
+
+```go
+type OutboxPublisher interface {
+	Publish(ctx context.Context, message relaybox.OutboxMessage) error
+}
+```
+
+The built-in `NATSOutboxPublisher` publishes to Core NATS and sets `Nats-Msg-Id` from the outbox message ID when the header is not already present.
+
+### `OutboxProcessor`
+
+`OutboxProcessor` claims due messages, publishes them, marks success, and records retry state after failures.
+
+```go
+processor := relaybox.NewOutboxProcessor(repo, publisher)
+
+result, err := processor.ProcessBatch(ctx)
+```
+
+`OutboxBatchResult` reports:
+
+- `Claimed`
+- `Published`
+- `Failed`
+
+Use `Run(ctx)` for a simple polling loop.
+
+## Delayed Queue
+
+`DelayedQueue` schedules messages by setting `OutboxMessage.AvailableAt`. When a message becomes due, the normal outbox processor publishes it.
+
+Schedule for a fixed time:
+
+```go
+err := queue.ScheduleAt(ctx, "evt-124", "orders.reminder", payload, runAt)
+```
+
+Schedule after a duration:
+
+```go
+err := queue.ScheduleAfter(ctx, "evt-125", "orders.reminder", payload, 15*time.Minute)
+```
