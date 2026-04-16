@@ -6,7 +6,7 @@
 
 Reliable event delivery primitives for Go services.
 
-`relaybox` is an open-source extraction from Hopen's backend reliability layer. It focuses on the small pieces teams keep rebuilding around event-driven services: idempotent consumers, transactional outbox processing, delayed delivery, and broker-facing publish adapters.
+`relaybox` is an open-source Go library for reliable event delivery primitives. It focuses on the small pieces teams keep rebuilding around event-driven services: idempotent consumers, transactional outbox processing, delayed delivery, and broker-facing publish adapters.
 
 ## Status
 
